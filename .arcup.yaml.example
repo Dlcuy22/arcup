@@ -20,6 +20,11 @@ remote: "s3:my-bucket/backups"
 watch: false
 interval: "@daily"   # or "6h", "30m", "@weekly"
 
+# Retry settings (for archive creation and upload)
+retry:
+  max-attempts: 3
+  delay: "1m"
+
 # Retention (runs after each backup if set)
 retention:
   keep-days: 7

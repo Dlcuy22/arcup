@@ -48,6 +48,12 @@ type Config struct {
 	Watch     bool            `mapstructure:"watch"`
 	Interval  string          `mapstructure:"interval"`
 	Retention RetentionConfig `mapstructure:"retention"`
+	Retry     RetryConfig     `mapstructure:"retry"`
+}
+
+type RetryConfig struct {
+	MaxAttempts int    `mapstructure:"max-attempts"`
+	Delay       string `mapstructure:"delay"`
 }
 
 type RetentionConfig struct {
@@ -68,6 +74,10 @@ func Load() (*Config, error) {
 		Algo:     "zstd",
 		UploadTo: "rclone",
 		OutputDir: "/tmp/arcup",
+		Retry: RetryConfig{
+			MaxAttempts: 3,
+			Delay:       "1m",
+		},
 	}
 
 	if err := viper.Unmarshal(cfg); err != nil {
