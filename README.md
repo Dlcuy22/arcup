@@ -1,5 +1,5 @@
 # arcup
-
+(short for archive backup)
 A portable CLI backup tool that archives files using `tar` with configurable compression and uploads them via `rclone` to any supported backend.
 
 ## Install
