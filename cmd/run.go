@@ -145,7 +145,7 @@ func setupContext() (context.Context, context.CancelFunc) {
 	go func() {
 		count := 0
 		for {
-			sig := <-sigChan
+			<-sigChan
 			count++
 			if count == 1 {
 				log.Info().Msg("Interrupt received, stopping gracefully... (press Ctrl+C 2 more times to force exit)")
