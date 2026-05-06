@@ -11,8 +11,10 @@
 package upload
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,10 +29,12 @@ func (r *RcloneUploader) Upload(localPath, remotePath string) error {
 	name := filepath.Base(localPath)
 	cmd := exec.Command("rclone", "copy", dir, remotePath,
 		"--include", name, "--progress")
+	var stderrBytes bytes.Buffer
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBytes)
+	
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("rclone copy: %w", err)
+		return fmt.Errorf("rclone copy: %w: %s", err, stderrBytes.String())
 	}
 	return nil
 }
@@ -41,6 +45,17 @@ func (r *RcloneUploader) Download(remotePath, localDir string) error {
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("rclone download: %w", err)
+	}
+	return nil
+}
+
+func (r *RcloneUploader) DownloadFiltered(remotePath, localDir, includePattern string) error {
+	cmd := exec.Command("rclone", "copy", remotePath, localDir,
+		"--include", includePattern, "--progress")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("rclone filtered download: %w", err)
 	}
 	return nil
 }

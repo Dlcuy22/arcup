@@ -75,7 +75,6 @@ Flags:
   -a, --algo string         compression algorithm: zstd, gz, zip (default "zstd")
   -A, --algo-args string    extra arguments for the compression tool
   -u, --upload-to string    upload backend (default "rclone")
-  -r, --remote string       rclone remote path (e.g. s3:bucket/backups)
   -o, --output-dir string   local staging directory (default "/tmp/arcup")
   -k, --keep int            keep N local copies, 0 = delete after upload
   -N, --name string         archive name prefix (default: hostname)
@@ -87,6 +86,10 @@ Flags:
   # Retention Policy
   -d, --keep-days int       delete remote backups older than N days (0 = disabled)
   -K, --keep-last int       always keep at least N most recent (0 = disabled)
+
+  # Retry Mechanism
+      --retry-attempts int  max attempts for archive/upload (default 3)
+      --retry-delay string  delay between retries (default "1m")
 ```
 
 ### `arcup restore`
@@ -97,7 +100,6 @@ Lists available backups on the remote and restores a selected archive.
 arcup restore [flags]
 
 Flags:
-  -r, --remote string   rclone remote path to list from
   -t, --to string       local destination for extraction (default ".")
   -S, --select int      skip prompt, pick backup by index
   -l, --list            list only, don't download or extract
@@ -118,6 +120,7 @@ arcup validate
 ```
   -c, --config string   config file (default: ~/.arcup.yaml)
   -n, --dry-run         simulate without writing or uploading
+  -r, --remote string   rclone remote path (e.g. s3:bucket/backups)
 ```
 
 ## Configuration
@@ -143,6 +146,11 @@ remote: "s3:my-bucket/backups"
 # Watch mode (use with: arcup run -w)
 watch: false
 interval: "@daily" # or "6h", "30m", "@weekly"
+
+# Retry settings (for archive creation and upload)
+retry:
+  max-attempts: 3
+  delay: "1m"
 
 # Retention (runs after each backup if set)
 retention:

@@ -25,7 +25,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -34,6 +37,8 @@ import (
 	"github.com/dlcuy22/arcup/internal/archive"
 	"github.com/dlcuy22/arcup/internal/config"
 	"github.com/dlcuy22/arcup/internal/meta"
+	"github.com/dlcuy22/arcup/internal/retention"
+	"github.com/dlcuy22/arcup/internal/retry"
 	"github.com/dlcuy22/arcup/internal/scheduler"
 	"github.com/dlcuy22/arcup/internal/upload"
 )
@@ -57,7 +62,6 @@ func init() {
 	runCmd.Flags().StringP("algo", "a", "zstd", "compression algorithm: zstd, gz, zip")
 	runCmd.Flags().StringP("algo-args", "A", "", "extra arguments for the compression tool")
 	runCmd.Flags().StringP("upload-to", "u", "rclone", "upload backend")
-	runCmd.Flags().StringP("remote", "r", "", "rclone remote path (e.g. s3:bucket/backups)")
 	runCmd.Flags().StringP("output-dir", "o", "/tmp/arcup", "local staging directory for archives")
 	runCmd.Flags().IntP("keep", "k", 0, "keep N local copies (0 = delete after upload)")
 	runCmd.Flags().StringP("name", "N", "", "archive name prefix (default: hostname)")
@@ -70,11 +74,14 @@ func init() {
 	runCmd.Flags().IntP("keep-days", "d", 0, "delete remote backups older than N days (0 = disabled)")
 	runCmd.Flags().IntP("keep-last", "K", 0, "always keep at least N most recent (0 = disabled)")
 
+	// Retry
+	runCmd.Flags().Int("retry-attempts", 3, "max attempts for archive/upload")
+	runCmd.Flags().String("retry-delay", "1m", "delay between retries")
+
 	viper.BindPFlag("sources", runCmd.Flags().Lookup("source"))
 	viper.BindPFlag("algo", runCmd.Flags().Lookup("algo"))
 	viper.BindPFlag("algo-args", runCmd.Flags().Lookup("algo-args"))
 	viper.BindPFlag("upload-to", runCmd.Flags().Lookup("upload-to"))
-	viper.BindPFlag("remote", runCmd.Flags().Lookup("remote"))
 	viper.BindPFlag("output-dir", runCmd.Flags().Lookup("output-dir"))
 	viper.BindPFlag("keep", runCmd.Flags().Lookup("keep"))
 	viper.BindPFlag("name", runCmd.Flags().Lookup("name"))
@@ -82,6 +89,8 @@ func init() {
 	viper.BindPFlag("interval", runCmd.Flags().Lookup("interval"))
 	viper.BindPFlag("retention.keep-days", runCmd.Flags().Lookup("keep-days"))
 	viper.BindPFlag("retention.keep-last", runCmd.Flags().Lookup("keep-last"))
+	viper.BindPFlag("retry.max-attempts", runCmd.Flags().Lookup("retry-attempts"))
+	viper.BindPFlag("retry.delay", runCmd.Flags().Lookup("retry-delay"))
 }
 
 func executeRun(cmd *cobra.Command) error {
@@ -160,8 +169,11 @@ func runBackupCycle(cfg *config.Config) error {
 		return nil
 	}
 
-	// Create archive
-	if err := archiver.Archive(cfg.Sources, archivePath, cfg.AlgoArgs); err != nil {
+	// Create archive with retries
+	err = retry.Do("archive", cfg.Retry.MaxAttempts, cfg.Retry.Delay, func() error {
+		return archiver.Archive(cfg.Sources, archivePath, cfg.AlgoArgs)
+	})
+	if err != nil {
 		return fmt.Errorf("archive failed: %w", err)
 	}
 
@@ -214,12 +226,18 @@ func runBackupCycle(cfg *config.Config) error {
 	}
 
 	log.Info().Str("remote", cfg.Remote).Msg("uploading archive")
-	if err := uploader.Upload(archivePath, cfg.Remote); err != nil {
+	err = retry.Do("upload_archive", cfg.Retry.MaxAttempts, cfg.Retry.Delay, func() error {
+		return uploader.Upload(archivePath, cfg.Remote)
+	})
+	if err != nil {
 		return fmt.Errorf("upload archive: %w", err)
 	}
 
 	log.Info().Str("remote", cfg.Remote).Msg("uploading sidecar")
-	if err := uploader.Upload(sidecarPath, cfg.Remote); err != nil {
+	err = retry.Do("upload_sidecar", cfg.Retry.MaxAttempts, cfg.Retry.Delay, func() error {
+		return uploader.Upload(sidecarPath, cfg.Remote)
+	})
+	if err != nil {
 		return fmt.Errorf("upload sidecar: %w", err)
 	}
 
@@ -236,17 +254,110 @@ func runBackupCycle(cfg *config.Config) error {
 
 	// Run retention if configured
 	if cfg.Retention.KeepDays > 0 || cfg.Retention.KeepLast > 0 {
-		// TODO: implement retention after backup
-		// 1. uploader.List(cfg.Remote) → get .meta.json files
-		// 2. Parse timestamps, sort descending
-		// 3. retention.Evaluate(policy, entries)
-		// 4. Delete expired entries via uploader.Delete()
 		log.Info().
 			Int("keep_days", cfg.Retention.KeepDays).
 			Int("keep_last", cfg.Retention.KeepLast).
-			Msg("retention not yet implemented, skipping")
+			Msg("running retention policy")
+
+		entries, err := buildRetentionEntries(uploader, cfg.Remote)
+		if err != nil {
+			log.Warn().Err(err).Msg("retention skipped: could not list remote")
+		} else {
+			policy := retention.Policy{
+				KeepDays: cfg.Retention.KeepDays,
+				KeepLast: cfg.Retention.KeepLast,
+			}
+			results := retention.Evaluate(policy, entries)
+
+			deleted := 0
+			for _, r := range results {
+				if r.Action == retention.Delete {
+					if cfg.DryRun {
+						log.Info().Str("archive", r.Entry.ArchivePath).Msg("dry run: would delete")
+						continue
+					}
+					if err := uploader.Delete(r.Entry.ArchivePath); err != nil {
+						log.Warn().Err(err).Str("file", r.Entry.ArchivePath).Msg("failed to delete archive")
+						continue
+					}
+					if err := uploader.Delete(r.Entry.SidecarPath); err != nil {
+						log.Warn().Err(err).Str("file", r.Entry.SidecarPath).Msg("failed to delete sidecar")
+					}
+					deleted++
+				}
+			}
+			log.Info().Int("deleted", deleted).Int("retained", len(results)-deleted).Msg("retention complete")
+		}
 	}
 
 	log.Info().Str("archive", archiveName).Msg("backup complete")
 	return nil
+}
+
+func buildRetentionEntries(uploader upload.Uploader, remote string) ([]retention.Entry, error) {
+	remoteEntries, err := uploader.List(remote)
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []retention.Entry
+	for _, re := range remoteEntries {
+		if !strings.HasSuffix(re.Name, ".meta.json") {
+			continue
+		}
+
+		ts := parseTimestampFromName(re.Name)
+		archiveName := strings.TrimSuffix(re.Name, ".meta.json")
+
+		found := false
+		for _, candidate := range remoteEntries {
+			if strings.HasPrefix(candidate.Name, archiveName+".tar.") {
+				entries = append(entries, retention.Entry{
+					ArchivePath: remoteJoin(remote, candidate.Name),
+					SidecarPath: remoteJoin(remote, re.Name),
+					Timestamp:   ts,
+					SizeBytes:   candidate.Size,
+				})
+				found = true
+				break
+			}
+		}
+		if !found {
+			entries = append(entries, retention.Entry{
+				ArchivePath: "",
+				SidecarPath: remoteJoin(remote, re.Name),
+				Timestamp:   ts,
+				SizeBytes:   0,
+			})
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Timestamp.After(entries[j].Timestamp)
+	})
+	return entries, nil
+}
+
+func parseTimestampFromName(name string) time.Time {
+	// name format: {prefix}_{host}_{timestamp}.meta.json or .tar.ext
+	// timestamp format: 2006-01-02T15-04-05
+	parts := strings.Split(name, "_")
+	if len(parts) >= 3 {
+		tsPart := parts[len(parts)-1]
+		tsPart = strings.TrimSuffix(tsPart, ".meta.json")
+		if idx := strings.Index(tsPart, ".tar."); idx != -1 {
+			tsPart = tsPart[:idx]
+		}
+		if t, err := time.ParseInLocation("2006-01-02T15-04-05", tsPart, time.Local); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+func remoteJoin(remote, name string) string {
+	if !strings.HasSuffix(remote, "/") {
+		return remote + "/" + name
+	}
+	return remote + name
 }

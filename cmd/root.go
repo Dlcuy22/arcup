@@ -47,8 +47,10 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default: ~/.arcup.yaml)")
 	rootCmd.PersistentFlags().BoolP("dry-run", "n", false, "simulate without writing or uploading")
+	rootCmd.PersistentFlags().StringP("remote", "r", "", "rclone remote path (e.g. s3:bucket/backups)")
 
 	viper.BindPFlag("dry-run", rootCmd.PersistentFlags().Lookup("dry-run"))
+	viper.BindPFlag("remote", rootCmd.PersistentFlags().Lookup("remote"))
 }
 
 func initConfig() {

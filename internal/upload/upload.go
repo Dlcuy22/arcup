@@ -3,7 +3,7 @@
 // to and from remote storage backends.
 //
 // Key Components:
-//   - Uploader: Interface for upload, download, list, and delete
+//   - Uploader: Interface for upload, download, list, delete, and filtered download
 //   - RemoteEntry: Represents a file on the remote
 //   - New(): Factory that returns an uploader by backend name
 //
@@ -26,6 +26,7 @@ type RemoteEntry struct {
 type Uploader interface {
 	Upload(localPath, remotePath string) error
 	Download(remotePath, localDir string) error
+	DownloadFiltered(remotePath, localDir, includePattern string) error
 	List(remotePath string) ([]RemoteEntry, error)
 	Delete(remotePath string) error
 }
