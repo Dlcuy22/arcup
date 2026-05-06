@@ -103,7 +103,7 @@ func (d *DiscordNotifier) buildPayload(event Event) map[string]interface{} {
 
 	embed := map[string]interface{}{
 		"title":       title,
-		"description": "[github.com/dlcuy22/arcup](<https://github.com/dlcuy22/arcup>)",
+		"description": "Powered by [arcup](<https://github.com/dlcuy22/arcup>)",
 		"color":       color,
 		"timestamp":   time.Now().UTC().Format(time.RFC3339),
 	}
