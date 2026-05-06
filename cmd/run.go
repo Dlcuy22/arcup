@@ -118,23 +118,50 @@ func executeRun(cmd *cobra.Command) error {
 			return fmt.Errorf("invalid interval: %w", err)
 		}
 
-		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		ctx, cancel := setupContext()
 		defer cancel()
 
 		log.Info().Str("interval", cfg.Interval).Msg("watch mode started, press Ctrl+C to stop")
 
 		return runner.Start(ctx, func() {
 			log.Info().Str("version", arcupVersion).Msg("starting backup cycle")
-			if err := runBackupCycle(cfg); err != nil {
+			if err := runBackupCycle(ctx, cfg); err != nil {
 				log.Error().Err(err).Msg("backup cycle failed")
 			}
 		})
 	}
 
-	return runBackupCycle(cfg)
+	ctx, cancel := setupContext()
+	defer cancel()
+
+	return runBackupCycle(ctx, cfg)
 }
 
-func runBackupCycle(cfg *config.Config) error {
+func setupContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sigChan := make(chan os.Signal, 2)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		count := 0
+		for {
+			sig := <-sigChan
+			count++
+			if count == 1 {
+				log.Info().Msg("Interrupt received, stopping gracefully... (press Ctrl+C 2 more times to force exit)")
+				cancel()
+			} else if count >= 3 {
+				log.Fatal().Msg("Force exit triggered by user")
+			} else {
+				log.Warn().Msgf("Press Ctrl+C %d more time(s) to force exit", 3-count)
+			}
+		}
+	}()
+
+	return ctx, cancel
+}
+
+func runBackupCycle(ctx context.Context, cfg *config.Config) error {
 	wh := webhook.NewManager()
 	if cfg.Webhook.Discord != "" {
 		wh.Add(webhook.NewDiscord(cfg.Webhook.Discord))
@@ -146,7 +173,7 @@ func runBackupCycle(cfg *config.Config) error {
 	wh.Notify(webhook.Event{Type: webhook.EventStarted})
 	jobStart := time.Now()
 
-	err := executeBackupCycle(cfg, wh, jobStart)
+	err := executeBackupCycle(ctx, cfg, wh, jobStart)
 	if err != nil {
 		wh.Notify(webhook.Event{
 			Type:  webhook.EventFailed,
@@ -156,7 +183,7 @@ func runBackupCycle(cfg *config.Config) error {
 	return err
 }
 
-func executeBackupCycle(cfg *config.Config, wh *webhook.Manager, jobStart time.Time) error {
+func executeBackupCycle(ctx context.Context, cfg *config.Config, wh *webhook.Manager, jobStart time.Time) error {
 	// Validate source paths exist
 	for _, src := range cfg.Sources {
 		if _, err := os.Stat(src); err != nil {
@@ -193,10 +220,11 @@ func executeBackupCycle(cfg *config.Config, wh *webhook.Manager, jobStart time.T
 	}
 
 	// Create archive with retries
-	err = retry.Do("archive", cfg.Retry.MaxAttempts, cfg.Retry.Delay, func() error {
+	err = retry.Do(ctx, "archive", cfg.Retry.MaxAttempts, cfg.Retry.Delay, func() error {
 		return archiver.Archive(cfg.Sources, archivePath, cfg.AlgoArgs)
 	})
 	if err != nil {
+		os.Remove(archivePath) // Cleanup failed partial archive
 		return fmt.Errorf("archive failed: %w", err)
 	}
 
@@ -245,6 +273,7 @@ func executeBackupCycle(cfg *config.Config, wh *webhook.Manager, jobStart time.T
 	}
 
 	if err := m.Write(sidecarPath); err != nil {
+		os.Remove(archivePath)
 		return fmt.Errorf("write sidecar: %w", err)
 	}
 	log.Info().Str("file", sidecarName).Msg("sidecar written")
@@ -256,7 +285,7 @@ func executeBackupCycle(cfg *config.Config, wh *webhook.Manager, jobStart time.T
 	}
 
 	log.Info().Str("remote", cfg.Remote).Msg("uploading archive")
-	err = retry.Do("upload_archive", cfg.Retry.MaxAttempts, cfg.Retry.Delay, func() error {
+	err = retry.Do(ctx, "upload_archive", cfg.Retry.MaxAttempts, cfg.Retry.Delay, func() error {
 		return uploader.Upload(archivePath, cfg.Remote)
 	})
 	if err != nil {
@@ -264,7 +293,7 @@ func executeBackupCycle(cfg *config.Config, wh *webhook.Manager, jobStart time.T
 	}
 
 	log.Info().Str("remote", cfg.Remote).Msg("uploading sidecar")
-	err = retry.Do("upload_sidecar", cfg.Retry.MaxAttempts, cfg.Retry.Delay, func() error {
+	err = retry.Do(ctx, "upload_sidecar", cfg.Retry.MaxAttempts, cfg.Retry.Delay, func() error {
 		return uploader.Upload(sidecarPath, cfg.Remote)
 	})
 	if err != nil {

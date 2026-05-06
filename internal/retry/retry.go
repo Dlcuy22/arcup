@@ -11,6 +11,7 @@
 package retry
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -48,6 +49,9 @@ func ParseError(err error) string {
 	if strings.Contains(lower, "not found") || strings.Contains(lower, "404") || strings.Contains(lower, "directory not found") {
 		return "not found"
 	}
+	if strings.Contains(lower, "interrupt") || strings.Contains(lower, "exit status 130") || strings.Contains(lower, "signal: killed") {
+		return "interrupted"
+	}
 
 	return ""
 }
@@ -55,8 +59,10 @@ func ParseError(err error) string {
 /*
 Do executes the given function up to maxAttempts times, waiting delay
 between retries. If the function succeeds, it returns immediately.
+It respects the provided context for cancellation.
 
 	params:
+		  ctx: context for cancellation
 		  ctxName: string context for logging (e.g. "archive" or "upload")
 		  maxAttempts: total number of times to try
 		  delay: duration string (e.g. "1m") to wait between attempts
@@ -64,7 +70,7 @@ between retries. If the function succeeds, it returns immediately.
 	returns:
 		  error: the last error encountered if all attempts fail, or nil
 */
-func Do(ctxName string, maxAttempts int, delay string, fn func() error) error {
+func Do(ctx context.Context, ctxName string, maxAttempts int, delay string, fn func() error) error {
 	d, err := time.ParseDuration(delay)
 	if err != nil {
 		d = time.Minute // Default fallback
@@ -76,6 +82,10 @@ func Do(ctxName string, maxAttempts int, delay string, fn func() error) error {
 
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		lastErr = fn()
 		if lastErr == nil {
 			return nil
@@ -88,11 +98,13 @@ func Do(ctxName string, maxAttempts int, delay string, fn func() error) error {
 		}
 
 		// Fast-fail for predictable, non-transient errors
-		if friendly == "missing dependency in $PATH" || friendly == "access denied / unauthorized" {
-			log.Error().
-				Str("task", ctxName).
-				Str("cause", logMsg).
-				Msg("task failed permanently (fatal error)")
+		if friendly == "missing dependency in $PATH" || friendly == "access denied / unauthorized" || friendly == "interrupted" {
+			if friendly != "interrupted" {
+				log.Error().
+					Str("task", ctxName).
+					Str("cause", logMsg).
+					Msg("task failed permanently (fatal error)")
+			}
 			return lastErr
 		}
 
@@ -103,7 +115,12 @@ func Do(ctxName string, maxAttempts int, delay string, fn func() error) error {
 				Int("max", maxAttempts).
 				Str("cause", logMsg).
 				Msgf("task failed, retrying in %s...", d)
-			time.Sleep(d)
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(d):
+			}
 		} else {
 			log.Error().
 				Str("task", ctxName).

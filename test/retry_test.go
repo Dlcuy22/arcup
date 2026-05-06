@@ -4,6 +4,7 @@
 package test
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func TestRetry_Do_IntentionalFailure(t *testing.T) {
 
 	start := time.Now()
 	
-	err := retry.Do("test_task", maxAttempts, "100ms", func() error {
+	err := retry.Do(context.Background(), "test_task", maxAttempts, "100ms", func() error {
 		attempts++
 		return expectedErr
 	})
@@ -51,6 +52,7 @@ func TestRetry_ParseError(t *testing.T) {
 		{errors.New("dial tcp 127.0.0.1: connection refused"), "network disconnected/unreachable"},
 		{errors.New("HTTP 403 Forbidden AccessDenied"), "access denied / unauthorized"},
 		{errors.New("file not found"), "not found"},
+		{errors.New("exit status 130"), "interrupted"},
 		{errors.New("unknown error 123"), ""},
 	}
 
@@ -65,7 +67,7 @@ func TestRetry_ParseError(t *testing.T) {
 func TestRetry_Do_SucceedsEventually(t *testing.T) {
 	attempts := 0
 	
-	err := retry.Do("test_task_recover", 3, "10ms", func() error {
+	err := retry.Do(context.Background(), "test_task_recover", 3, "10ms", func() error {
 		attempts++
 		if attempts < 2 {
 			return errors.New("temporary failure")

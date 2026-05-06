@@ -76,17 +76,17 @@ func (d *DiscordNotifier) buildPayload(event Event) map[string]interface{} {
 	switch event.Type {
 	case EventStarted:
 		color = 3447003 // Blue
-		title = "🚀 Backup Job Started"
+		title = "Backup Job Started"
 	case EventArchived:
 		color = 16776960 // Yellow
-		title = "📦 Archive Created"
+		title = "Archive Created"
 		fields = append(fields,
 			map[string]interface{}{"name": "Archive", "value": event.Archive, "inline": false},
 			map[string]interface{}{"name": "Time Taken", "value": event.Duration.String(), "inline": true},
 		)
 	case EventUploaded:
 		color = 5763719 // Green
-		title = "✅ Backup Uploaded Successfully"
+		title = "Backup Uploaded Successfully"
 		fields = append(fields,
 			map[string]interface{}{"name": "Archive", "value": event.Archive, "inline": false},
 			map[string]interface{}{"name": "Size", "value": formatSize(event.Size), "inline": true},
@@ -95,16 +95,17 @@ func (d *DiscordNotifier) buildPayload(event Event) map[string]interface{} {
 		)
 	case EventFailed:
 		color = 15548997 // Red
-		title = "❌ Backup Job Failed"
+		title = "Backup Job Failed"
 		fields = append(fields,
 			map[string]interface{}{"name": "Error", "value": fmt.Sprintf("```\n%s\n```", event.Error.Error()), "inline": false},
 		)
 	}
 
 	embed := map[string]interface{}{
-		"title": title,
-		"color": color,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"title":       title,
+		"description": "[github.com/dlcuy22/arcup](<https://github.com/dlcuy22/arcup>)",
+		"color":       color,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
 	}
 	if len(fields) > 0 {
 		embed["fields"] = fields
@@ -112,6 +113,6 @@ func (d *DiscordNotifier) buildPayload(event Event) map[string]interface{} {
 
 	return map[string]interface{}{
 		"username": "Arcup Notifier",
-		"embeds": []map[string]interface{}{embed},
+		"embeds":   []map[string]interface{}{embed},
 	}
 }
