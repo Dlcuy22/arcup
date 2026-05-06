@@ -44,8 +44,6 @@ import (
 	"github.com/dlcuy22/arcup/internal/webhook"
 )
 
-const arcupVersion = "0.5.0"
-
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run a backup (one-shot or scheduled with -w)",

@@ -23,16 +23,23 @@ import (
 	"github.com/spf13/viper"
 )
 
-var cfgFile string
+var (
+	cfgFile      string
+	arcupVersion = "0.5.0"
+)
 
 var rootCmd = &cobra.Command{
-	Use:   "arcup",
-	Short: "Archive and upload backups",
+	Use:     "arcup",
+	Short:   "Archive and upload backups",
+	Version: arcupVersion,
 	Long: `arcup is a portable CLI backup tool that archives files
 using tar with configurable compression (zstd, gzip, zip)
 and uploads them via rclone to any supported backend.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		log.Info().Str("version", arcupVersion).Msg("running arcup")
+	},
 }
 
 func Execute() {
