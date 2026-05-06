@@ -1,23 +1,31 @@
 // Module: cmd/run
-// Purpose: Implements the one-shot "run" subcommand that performs
-// a single backup cycle: archive sources, generate metadata sidecar,
-// upload both to the remote, and clean up local files.
+// Purpose: Implements the "run" subcommand that performs a backup
+// cycle: archive sources, generate metadata sidecar, upload both
+// to the remote, and clean up local files. Supports watch mode
+// (-w) to repeat on a schedule, and optional retention cleanup
+// after each successful backup.
 //
 // Key Components:
 //   - runCmd: Cobra command for "arcup run"
 //   - executeRun(): Core backup logic orchestrator
+//   - runBackupCycle(): Single backup + optional retention pass
 //
 // Dependencies:
 //   - internal/config: Resolved configuration struct
 //   - internal/archive: Archiver factory and compression
 //   - internal/upload: Rclone upload executor
 //   - internal/meta: Sidecar metadata generation
+//   - internal/scheduler: Cron/duration scheduling for watch mode
+//   - internal/retention: Policy evaluation for cleanup
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -26,6 +34,7 @@ import (
 	"github.com/dlcuy22/arcup/internal/archive"
 	"github.com/dlcuy22/arcup/internal/config"
 	"github.com/dlcuy22/arcup/internal/meta"
+	"github.com/dlcuy22/arcup/internal/scheduler"
 	"github.com/dlcuy22/arcup/internal/upload"
 )
 
@@ -33,10 +42,11 @@ const arcupVersion = "0.1.0"
 
 var runCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Run a one-shot backup",
-	Long:  `Archives the configured sources, uploads to the remote, and exits.`,
+	Short: "Run a backup (one-shot or scheduled with -w)",
+	Long: `Archives the configured sources, uploads to the remote, and exits.
+Use -w/--watch with -i/--interval to repeat on a schedule.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return executeRun()
+		return executeRun(cmd)
 	},
 }
 
@@ -52,6 +62,14 @@ func init() {
 	runCmd.Flags().IntP("keep", "k", 0, "keep N local copies (0 = delete after upload)")
 	runCmd.Flags().StringP("name", "N", "", "archive name prefix (default: hostname)")
 
+	// Watch mode
+	runCmd.Flags().BoolP("watch", "w", false, "run on a schedule instead of one-shot")
+	runCmd.Flags().StringP("interval", "i", "", `schedule: cron expr or duration (e.g. "@daily", "6h")`)
+
+	// Retention
+	runCmd.Flags().IntP("keep-days", "d", 0, "delete remote backups older than N days (0 = disabled)")
+	runCmd.Flags().IntP("keep-last", "K", 0, "always keep at least N most recent (0 = disabled)")
+
 	viper.BindPFlag("sources", runCmd.Flags().Lookup("source"))
 	viper.BindPFlag("algo", runCmd.Flags().Lookup("algo"))
 	viper.BindPFlag("algo-args", runCmd.Flags().Lookup("algo-args"))
@@ -60,19 +78,53 @@ func init() {
 	viper.BindPFlag("output-dir", runCmd.Flags().Lookup("output-dir"))
 	viper.BindPFlag("keep", runCmd.Flags().Lookup("keep"))
 	viper.BindPFlag("name", runCmd.Flags().Lookup("name"))
+	viper.BindPFlag("watch", runCmd.Flags().Lookup("watch"))
+	viper.BindPFlag("interval", runCmd.Flags().Lookup("interval"))
+	viper.BindPFlag("retention.keep-days", runCmd.Flags().Lookup("keep-days"))
+	viper.BindPFlag("retention.keep-last", runCmd.Flags().Lookup("keep-last"))
 }
 
-func executeRun() error {
+func executeRun(cmd *cobra.Command) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("configuration error: %w", err)
-
 	}
 
 	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("missing or invalid arguments: %v", err)
+		cmd.Help()
+		fmt.Fprintf(os.Stderr, "\n  error: %v\n", err)
+		return nil
 	}
 
+	if cfg.Watch {
+		if cfg.Interval == "" {
+			cmd.Help()
+			fmt.Fprintf(os.Stderr, "\n  error: --watch requires --interval (e.g. -i 6h)\n")
+			return nil
+		}
+
+		runner, err := scheduler.Parse(cfg.Interval)
+		if err != nil {
+			return fmt.Errorf("invalid interval: %w", err)
+		}
+
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+
+		log.Info().Str("interval", cfg.Interval).Msg("watch mode started, press Ctrl+C to stop")
+
+		return runner.Start(ctx, func() {
+			log.Info().Msg("starting backup cycle")
+			if err := runBackupCycle(cfg); err != nil {
+				log.Error().Err(err).Msg("backup cycle failed")
+			}
+		})
+	}
+
+	return runBackupCycle(cfg)
+}
+
+func runBackupCycle(cfg *config.Config) error {
 	// Validate source paths exist
 	for _, src := range cfg.Sources {
 		if _, err := os.Stat(src); err != nil {
@@ -104,13 +156,13 @@ func executeRun() error {
 		Msg("archiving")
 
 	if cfg.DryRun {
-		log.Info().Msg("dry run — skipping archive, upload, and cleanup")
+		log.Info().Msg("dry run, skipping archive, upload, and cleanup")
 		return nil
 	}
 
 	// Create archive
 	if err := archiver.Archive(cfg.Sources, archivePath, cfg.AlgoArgs); err != nil {
-		return fmt.Errorf("archive: %w", err)
+		return fmt.Errorf("archive failed: %w", err)
 	}
 
 	// Get archive size
@@ -180,6 +232,19 @@ func executeRun() error {
 		log.Info().Msg("local files cleaned up")
 	} else {
 		log.Info().Int("keep", cfg.Keep).Msg("keeping local copies")
+	}
+
+	// Run retention if configured
+	if cfg.Retention.KeepDays > 0 || cfg.Retention.KeepLast > 0 {
+		// TODO: implement retention after backup
+		// 1. uploader.List(cfg.Remote) → get .meta.json files
+		// 2. Parse timestamps, sort descending
+		// 3. retention.Evaluate(policy, entries)
+		// 4. Delete expired entries via uploader.Delete()
+		log.Info().
+			Int("keep_days", cfg.Retention.KeepDays).
+			Int("keep_last", cfg.Retention.KeepLast).
+			Msg("retention not yet implemented, skipping")
 	}
 
 	log.Info().Str("archive", archiveName).Msg("backup complete")

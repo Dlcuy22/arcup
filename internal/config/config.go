@@ -30,9 +30,9 @@ import (
 )
 
 var (
-	ErrMissingSources = errors.New("at least one source path is required")
-	ErrMissingRemote  = errors.New("remote path is required")
-	ErrInvalidAlgo    = errors.New("algo must be one of: zstd, gz, zip")
+	ErrMissingSources = errors.New("at least one --source/-s is required")
+	ErrMissingRemote  = errors.New("--remote/-r is required")
+	ErrInvalidAlgo    = errors.New("--algo/-a must be one of: zstd, gz, zip")
 )
 
 type Config struct {
@@ -42,19 +42,17 @@ type Config struct {
 	AlgoArgs  string          `mapstructure:"algo-args"`
 	UploadTo  string          `mapstructure:"upload-to"`
 	Remote    string          `mapstructure:"remote"`
-	Interval  string          `mapstructure:"interval"`
 	OutputDir string          `mapstructure:"output-dir"`
 	Keep      int             `mapstructure:"keep"`
 	DryRun    bool            `mapstructure:"dry-run"`
+	Watch     bool            `mapstructure:"watch"`
+	Interval  string          `mapstructure:"interval"`
 	Retention RetentionConfig `mapstructure:"retention"`
 }
 
 type RetentionConfig struct {
-	KeepDays    int    `mapstructure:"keep-days"`
-	KeepLast    int    `mapstructure:"keep-last"`
-	Interval    string `mapstructure:"interval"`
-	AfterBackup bool   `mapstructure:"after-backup"`
-	DryRun      bool   `mapstructure:"dry-run"`
+	KeepDays int `mapstructure:"keep-days"`
+	KeepLast int `mapstructure:"keep-last"`
 }
 
 /*
@@ -67,13 +65,9 @@ Applies defaults for fields not set by flags, env, or config file.
 */
 func Load() (*Config, error) {
 	cfg := &Config{
-		Algo:      "zstd",
-		UploadTo:  "rclone",
+		Algo:     "zstd",
+		UploadTo: "rclone",
 		OutputDir: "/tmp/arcup",
-		Retention: RetentionConfig{
-			KeepDays: 7,
-			KeepLast: 5,
-		},
 	}
 
 	if err := viper.Unmarshal(cfg); err != nil {

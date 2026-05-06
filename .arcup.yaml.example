@@ -1,4 +1,4 @@
-# arcup — Example Configuration
+# arcup Example Configuration
 # Copy to ~/.arcup.yaml and customize
 
 name: my-backup
@@ -16,11 +16,11 @@ algo-args: ""
 upload-to: rclone
 remote: "s3:my-bucket/backups"
 
+# Watch mode (use with: arcup run -w)
+watch: false
 interval: "@daily"   # or "6h", "30m", "@weekly"
 
+# Retention (runs after each backup if set)
 retention:
   keep-days: 7
   keep-last: 5
-  interval: "@daily"
-  after-backup: true
-  dry-run: false

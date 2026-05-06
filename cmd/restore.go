@@ -21,7 +21,7 @@ import (
 
 var restoreCmd = &cobra.Command{
 	Use:   "restore",
-	Short: "(THIS FEATURE HASN'T BEEN IMPLEMENTED YET) List and restore backups from a remote",
+	Short: "List and restore backups from a remote",
 	Long:  `Fetches the backup list from the remote, displays recent entries, and restores a selected archive.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return executeRestore(cmd)

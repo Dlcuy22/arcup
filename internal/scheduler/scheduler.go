@@ -78,6 +78,9 @@ func (t *TickRunner) Start(ctx context.Context, fn func()) error {
 }
 
 func (c *CronRunner) Start(ctx context.Context, fn func()) error {
+	// Run immediately on start, then on schedule
+	fn()
+
 	cr := cron.New()
 	_, err := cr.AddFunc(c.Expr, fn)
 	if err != nil {
