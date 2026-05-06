@@ -44,7 +44,7 @@ import (
 	"github.com/dlcuy22/arcup/internal/webhook"
 )
 
-const arcupVersion = "0.1.0"
+const arcupVersion = "0.5.0"
 
 var runCmd = &cobra.Command{
 	Use:   "run",
@@ -124,7 +124,7 @@ func executeRun(cmd *cobra.Command) error {
 		log.Info().Str("interval", cfg.Interval).Msg("watch mode started, press Ctrl+C to stop")
 
 		return runner.Start(ctx, func() {
-			log.Info().Msg("starting backup cycle")
+			log.Info().Str("version", arcupVersion).Msg("starting backup cycle")
 			if err := runBackupCycle(cfg); err != nil {
 				log.Error().Err(err).Msg("backup cycle failed")
 			}
