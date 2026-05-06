@@ -13,16 +13,17 @@
 package cmd
 
 import (
+	"github.com/dlcuy22/arcup/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var watchCmd = &cobra.Command{
 	Use:   "watch",
-	Short: "Run scheduled backups (daemon mode)",
+	Short: "(THIS FEATURE HASN'T BEEN IMPLEMENTED YET) Run scheduled backups (daemon mode)",
 	Long:  `Runs backup cycles on the configured interval. Blocks until interrupted.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return executeWatch()
+		return executeWatch(cmd)
 	},
 }
 
@@ -33,7 +34,13 @@ func init() {
 	viper.BindPFlag("interval", watchCmd.Flags().Lookup("interval"))
 }
 
-func executeWatch() error {
+func executeWatch(cmd *cobra.Command) error {
+	cfg, err := config.Load()
+	if err != nil || cfg.Interval == "" {
+		cmd.Help()
+		return nil
+	}
+
 	// TODO: implement watch mode
 	// 1. Load config
 	// 2. Parse interval via scheduler.Parse()

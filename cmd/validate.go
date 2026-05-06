@@ -12,7 +12,15 @@
 //   - internal/upload: Remote connectivity check
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+	"os"
+	"os/exec"
+
+	"github.com/dlcuy22/arcup/internal/config"
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
+)
 
 var validateCmd = &cobra.Command{
 	Use:   "validate",
@@ -28,13 +36,37 @@ func init() {
 }
 
 func executeValidate() error {
-	// TODO: implement validation
-	// 1. Load config
-	// 2. Check source paths exist
-	// 3. Check compression binary on $PATH (zstd, gzip, zip)
-	// 4. Check tar on $PATH
-	// 5. Check rclone on $PATH
-	// 6. rclone lsd remote → verify accessibility
-	// 7. Print summary of checks
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("configuration error: %w", err)
+	}
+
+	log.Info().Msg("Validating configuration...")
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid config: %w", err)
+	}
+
+	log.Info().Msg("Validating sources...")
+	for _, src := range cfg.Sources {
+		if _, err := os.Stat(src); err != nil {
+			return fmt.Errorf("source missing: %s", src)
+		}
+	}
+
+	log.Info().Msg("Checking dependencies...")
+	deps := []string{"tar", cfg.Algo, cfg.UploadTo}
+	for _, dep := range deps {
+		if _, err := exec.LookPath(dep); err != nil {
+			return fmt.Errorf("dependency missing in $PATH: %s", dep)
+		}
+	}
+
+	log.Info().Msgf("Checking remote %q...", cfg.Remote)
+	cmd := exec.Command(cfg.UploadTo, "lsd", cfg.Remote)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("remote check failed: %s (%v)", string(output), err)
+	}
+
+	log.Info().Msg("All checks passed! arcup is ready.")
 	return nil
 }

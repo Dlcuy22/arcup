@@ -13,14 +13,18 @@
 //   - internal/meta: Sidecar parsing
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/dlcuy22/arcup/internal/config"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
 
 var retentionCmd = &cobra.Command{
 	Use:   "retention",
-	Short: "Apply retention policy to remote backups",
+	Short: "(THIS FEATURE HASN'T BEEN IMPLEMENTED YET) Apply retention policy to remote backups",
 	Long:  `Lists remote backups and deletes those that exceed the configured retention policy.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return executeRetention()
+		return executeRetention(cmd)
 	},
 }
 
@@ -30,10 +34,18 @@ func init() {
 	retentionCmd.Flags().StringP("remote", "r", "", "rclone remote path")
 	retentionCmd.Flags().IntP("keep-days", "d", 7, "delete backups older than N days")
 	retentionCmd.Flags().IntP("keep-last", "K", 5, "always keep at least N most recent")
+
+	viper.BindPFlag("remote", retentionCmd.Flags().Lookup("remote"))
 }
 
-func executeRetention() error {
-	// TODO: implement retention
+func executeRetention(cmd *cobra.Command) error {
+	cfg, err := config.Load()
+	if err != nil || cfg.Remote == "" {
+		cmd.Help()
+		return nil
+	}
+
+	// TODO: implement retention logic
 	// 1. rclone lsjson remote → list .meta.json files
 	// 2. Parse timestamps, sort descending (newest first)
 	// 3. Mark top N as protected (keep-last)

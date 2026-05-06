@@ -13,14 +13,18 @@
 //   - internal/archive: Extraction
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/dlcuy22/arcup/internal/config"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
 
 var restoreCmd = &cobra.Command{
 	Use:   "restore",
-	Short: "List and restore backups from a remote",
+	Short: "(THIS FEATURE HASN'T BEEN IMPLEMENTED YET) List and restore backups from a remote",
 	Long:  `Fetches the backup list from the remote, displays recent entries, and restores a selected archive.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return executeRestore()
+		return executeRestore(cmd)
 	},
 }
 
@@ -33,10 +37,18 @@ func init() {
 	restoreCmd.Flags().BoolP("list", "l", false, "list only, don't download or extract")
 	restoreCmd.Flags().IntP("limit", "L", 5, "number of backups to show")
 	restoreCmd.Flags().BoolP("verify", "v", true, "checksum verify after download")
+
+	viper.BindPFlag("remote", restoreCmd.Flags().Lookup("remote"))
 }
 
-func executeRestore() error {
-	// TODO: implement restore
+func executeRestore(cmd *cobra.Command) error {
+	cfg, err := config.Load()
+	if err != nil || cfg.Remote == "" {
+		cmd.Help()
+		return nil
+	}
+
+	// TODO: implement restore logic
 	// 1. rclone lsjson remote → list .meta.json files
 	// 2. Parse timestamps, sort descending
 	// 3. Display top N with index, size, and age

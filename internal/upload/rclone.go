@@ -15,12 +15,18 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 type RcloneUploader struct{}
 
 func (r *RcloneUploader) Upload(localPath, remotePath string) error {
-	cmd := exec.Command("rclone", "copy", localPath, remotePath, "--progress")
+	// rclone copy wants a directory as source; use the parent dir
+	// with --include to target only the specific file
+	dir := filepath.Dir(localPath)
+	name := filepath.Base(localPath)
+	cmd := exec.Command("rclone", "copy", dir, remotePath,
+		"--include", name, "--progress")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

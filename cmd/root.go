@@ -31,6 +31,8 @@ var rootCmd = &cobra.Command{
 	Long: `arcup is a portable CLI backup tool that archives files
 using tar with configurable compression (zstd, gzip, zip)
 and uploads them via rclone to any supported backend.`,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func Execute() {
