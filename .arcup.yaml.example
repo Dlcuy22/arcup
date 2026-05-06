@@ -1,0 +1,26 @@
+# arcup — Example Configuration
+# Copy to ~/.arcup.yaml and customize
+
+name: my-backup
+output-dir: /tmp/arcup
+keep: 3
+dry-run: false
+
+sources:
+  - /home/user/documents
+  - /home/user/projects
+
+algo: zstd
+algo-args: ""
+
+upload-to: rclone
+remote: "s3:my-bucket/backups"
+
+interval: "@daily"   # or "6h", "30m", "@weekly"
+
+retention:
+  keep-days: 7
+  keep-last: 5
+  interval: "@daily"
+  after-backup: true
+  dry-run: false
