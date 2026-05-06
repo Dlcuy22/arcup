@@ -76,17 +76,17 @@ func (d *DiscordNotifier) buildPayload(event Event) map[string]interface{} {
 	switch event.Type {
 	case EventStarted:
 		color = 3447003 // Blue
-		title = "Backup Job Started"
+		title = "[ARCUP] Backup Job Started"
 	case EventArchived:
 		color = 16776960 // Yellow
-		title = "Archive Created"
+		title = "[ARCUP] Archive Created"
 		fields = append(fields,
 			map[string]interface{}{"name": "Archive", "value": event.Archive, "inline": false},
 			map[string]interface{}{"name": "Time Taken", "value": event.Duration.String(), "inline": true},
 		)
 	case EventUploaded:
 		color = 5763719 // Green
-		title = "Backup Uploaded Successfully"
+		title = "[ARCUP] Backup Uploaded Successfully"
 		fields = append(fields,
 			map[string]interface{}{"name": "Archive", "value": event.Archive, "inline": false},
 			map[string]interface{}{"name": "Size", "value": formatSize(event.Size), "inline": true},
@@ -95,7 +95,7 @@ func (d *DiscordNotifier) buildPayload(event Event) map[string]interface{} {
 		)
 	case EventFailed:
 		color = 15548997 // Red
-		title = "Backup Job Failed"
+		title = "[ARCUP] Backup Job Failed"
 		fields = append(fields,
 			map[string]interface{}{"name": "Error", "value": fmt.Sprintf("```\n%s\n```", event.Error.Error()), "inline": false},
 		)
