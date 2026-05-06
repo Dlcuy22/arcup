@@ -42,6 +42,9 @@ func ParseError(err error) string {
 	if strings.Contains(lower, "accessdenied") || strings.Contains(lower, "403 forbidden") || strings.Contains(lower, "401 unauthorized") || strings.Contains(lower, "auth") {
 		return "access denied / unauthorized"
 	}
+	if strings.Contains(lower, "executable file not found in $path") {
+		return "missing dependency in $PATH"
+	}
 	if strings.Contains(lower, "not found") || strings.Contains(lower, "404") || strings.Contains(lower, "directory not found") {
 		return "not found"
 	}
@@ -82,6 +85,15 @@ func Do(ctxName string, maxAttempts int, delay string, fn func() error) error {
 		logMsg := lastErr.Error()
 		if friendly != "" {
 			logMsg = friendly
+		}
+
+		// Fast-fail for predictable, non-transient errors
+		if friendly == "missing dependency in $PATH" || friendly == "access denied / unauthorized" {
+			log.Error().
+				Str("task", ctxName).
+				Str("cause", logMsg).
+				Msg("task failed permanently (fatal error)")
+			return lastErr
 		}
 
 		if attempt < maxAttempts {
