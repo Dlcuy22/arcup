@@ -152,6 +152,11 @@ retry:
   max-attempts: 3
   delay: "1m"
 
+# Webhooks (optional, leave empty to disable)
+webhook:
+  discord: ""    # e.g. "https://discord.com/api/webhooks/..."
+  custom-url: "" # generic POST webhook
+
 # Retention (runs after each backup if set)
 retention:
   keep-days: 7
@@ -159,6 +164,12 @@ retention:
 ```
 
 Flags always take priority over config file values.
+
+### Webhooks
+
+Arcup can send lifecycle notifications (Job Started, Archive Created, Uploaded, Failed) to external services. Configure these in your `~/.arcup.yaml`. 
+* **Discord**: Sends rich, color-coded embeds with backup stats (size, hash, duration).
+* **Custom URL**: Sends a generic JSON POST payload to your API or automation service.
 
 ## Archive Naming
 

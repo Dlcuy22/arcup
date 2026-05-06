@@ -25,6 +25,11 @@ retry:
   max-attempts: 3
   delay: "1m"
 
+# Webhooks (optional, leave empty to disable)
+webhook:
+  discord: ""    # e.g. "https://discord.com/api/webhooks/..."
+  custom-url: "" # generic POST webhook
+
 # Retention (runs after each backup if set)
 retention:
   keep-days: 7

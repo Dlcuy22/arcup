@@ -49,11 +49,17 @@ type Config struct {
 	Interval  string          `mapstructure:"interval"`
 	Retention RetentionConfig `mapstructure:"retention"`
 	Retry     RetryConfig     `mapstructure:"retry"`
+	Webhook   WebhookConfig   `mapstructure:"webhook"`
 }
 
 type RetryConfig struct {
 	MaxAttempts int    `mapstructure:"max-attempts"`
 	Delay       string `mapstructure:"delay"`
+}
+
+type WebhookConfig struct {
+	Discord   string `mapstructure:"discord"`
+	CustomURL string `mapstructure:"custom-url"`
 }
 
 type RetentionConfig struct {

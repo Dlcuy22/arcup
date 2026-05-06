@@ -41,6 +41,7 @@ import (
 	"github.com/dlcuy22/arcup/internal/retry"
 	"github.com/dlcuy22/arcup/internal/scheduler"
 	"github.com/dlcuy22/arcup/internal/upload"
+	"github.com/dlcuy22/arcup/internal/webhook"
 )
 
 const arcupVersion = "0.1.0"
@@ -134,6 +135,28 @@ func executeRun(cmd *cobra.Command) error {
 }
 
 func runBackupCycle(cfg *config.Config) error {
+	wh := webhook.NewManager()
+	if cfg.Webhook.Discord != "" {
+		wh.Add(webhook.NewDiscord(cfg.Webhook.Discord))
+	}
+	if cfg.Webhook.CustomURL != "" {
+		wh.Add(webhook.NewURL(cfg.Webhook.CustomURL))
+	}
+
+	wh.Notify(webhook.Event{Type: webhook.EventStarted})
+	jobStart := time.Now()
+
+	err := executeBackupCycle(cfg, wh, jobStart)
+	if err != nil {
+		wh.Notify(webhook.Event{
+			Type:  webhook.EventFailed,
+			Error: err,
+		})
+	}
+	return err
+}
+
+func executeBackupCycle(cfg *config.Config, wh *webhook.Manager, jobStart time.Time) error {
 	// Validate source paths exist
 	for _, src := range cfg.Sources {
 		if _, err := os.Stat(src); err != nil {
@@ -186,6 +209,13 @@ func runBackupCycle(cfg *config.Config) error {
 		Str("file", archiveName).
 		Int64("size_bytes", archiveInfo.Size()).
 		Msg("archive created")
+
+	wh.Notify(webhook.Event{
+		Type:     webhook.EventArchived,
+		Archive:  archiveName,
+		Size:     archiveInfo.Size(),
+		Duration: time.Since(jobStart),
+	})
 
 	// Compute checksum
 	checksum, err := meta.ComputeSHA256(archivePath)
@@ -242,6 +272,14 @@ func runBackupCycle(cfg *config.Config) error {
 	}
 
 	log.Info().Msg("upload complete")
+
+	wh.Notify(webhook.Event{
+		Type:     webhook.EventUploaded,
+		Archive:  archiveName,
+		Size:     archiveInfo.Size(),
+		Hash:     checksum,
+		Duration: time.Since(jobStart),
+	})
 
 	// Cleanup local files
 	if cfg.Keep == 0 {
