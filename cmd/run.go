@@ -25,8 +25,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
-	"strings"
 	"syscall"
 	"time"
 
@@ -70,7 +68,7 @@ func init() {
 	runCmd.Flags().StringP("interval", "i", "", `schedule: cron expr or duration (e.g. "@daily", "6h")`)
 
 	// Retention
-	runCmd.Flags().IntP("keep-days", "d", 0, "delete remote backups older than N days (0 = disabled)")
+	runCmd.Flags().DurationP("keep-within", "W", 0, "delete remote backups older than duration, e.g. 24h (0 = disabled)")
 	runCmd.Flags().IntP("keep-last", "K", 0, "always keep at least N most recent (0 = disabled)")
 
 	// Retry
@@ -86,7 +84,7 @@ func init() {
 	viper.BindPFlag("name", runCmd.Flags().Lookup("name"))
 	viper.BindPFlag("watch", runCmd.Flags().Lookup("watch"))
 	viper.BindPFlag("interval", runCmd.Flags().Lookup("interval"))
-	viper.BindPFlag("retention.keep-days", runCmd.Flags().Lookup("keep-days"))
+	viper.BindPFlag("retention.keep-within", runCmd.Flags().Lookup("keep-within"))
 	viper.BindPFlag("retention.keep-last", runCmd.Flags().Lookup("keep-last"))
 	viper.BindPFlag("retry.max-attempts", runCmd.Flags().Lookup("retry-attempts"))
 	viper.BindPFlag("retry.delay", runCmd.Flags().Lookup("retry-delay"))
@@ -318,40 +316,22 @@ func executeBackupCycle(ctx context.Context, cfg *config.Config, wh *webhook.Man
 	}
 
 	// Run retention if configured
-	if cfg.Retention.KeepDays > 0 || cfg.Retention.KeepLast > 0 {
+	if cfg.Retention.KeepWithin > 0 || cfg.Retention.KeepLast > 0 {
 		log.Info().
-			Int("keep_days", cfg.Retention.KeepDays).
+			Dur("keep_within", cfg.Retention.KeepWithin).
 			Int("keep_last", cfg.Retention.KeepLast).
 			Msg("running retention policy")
 
-		entries, err := buildRetentionEntries(uploader, cfg.Remote)
+		policy := retention.Policy{
+			KeepWithin: cfg.Retention.KeepWithin,
+			KeepLast:   cfg.Retention.KeepLast,
+		}
+		
+		deleted, err := retention.Execute(policy, uploader, cfg.Remote, cfg.DryRun)
 		if err != nil {
 			log.Warn().Err(err).Msg("retention skipped: could not list remote")
 		} else {
-			policy := retention.Policy{
-				KeepDays: cfg.Retention.KeepDays,
-				KeepLast: cfg.Retention.KeepLast,
-			}
-			results := retention.Evaluate(policy, entries)
-
-			deleted := 0
-			for _, r := range results {
-				if r.Action == retention.Delete {
-					if cfg.DryRun {
-						log.Info().Str("archive", r.Entry.ArchivePath).Msg("dry run: would delete")
-						continue
-					}
-					if err := uploader.Delete(r.Entry.ArchivePath); err != nil {
-						log.Warn().Err(err).Str("file", r.Entry.ArchivePath).Msg("failed to delete archive")
-						continue
-					}
-					if err := uploader.Delete(r.Entry.SidecarPath); err != nil {
-						log.Warn().Err(err).Str("file", r.Entry.SidecarPath).Msg("failed to delete sidecar")
-					}
-					deleted++
-				}
-			}
-			log.Info().Int("deleted", deleted).Int("retained", len(results)-deleted).Msg("retention complete")
+			log.Info().Int("deleted", deleted).Msg("retention complete")
 		}
 	}
 
@@ -359,70 +339,4 @@ func executeBackupCycle(ctx context.Context, cfg *config.Config, wh *webhook.Man
 	return nil
 }
 
-func buildRetentionEntries(uploader upload.Uploader, remote string) ([]retention.Entry, error) {
-	remoteEntries, err := uploader.List(remote)
-	if err != nil {
-		return nil, err
-	}
 
-	var entries []retention.Entry
-	for _, re := range remoteEntries {
-		if !strings.HasSuffix(re.Name, ".meta.json") {
-			continue
-		}
-
-		ts := parseTimestampFromName(re.Name)
-		archiveName := strings.TrimSuffix(re.Name, ".meta.json")
-
-		found := false
-		for _, candidate := range remoteEntries {
-			if strings.HasPrefix(candidate.Name, archiveName+".tar.") {
-				entries = append(entries, retention.Entry{
-					ArchivePath: remoteJoin(remote, candidate.Name),
-					SidecarPath: remoteJoin(remote, re.Name),
-					Timestamp:   ts,
-					SizeBytes:   candidate.Size,
-				})
-				found = true
-				break
-			}
-		}
-		if !found {
-			entries = append(entries, retention.Entry{
-				ArchivePath: "",
-				SidecarPath: remoteJoin(remote, re.Name),
-				Timestamp:   ts,
-				SizeBytes:   0,
-			})
-		}
-	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Timestamp.After(entries[j].Timestamp)
-	})
-	return entries, nil
-}
-
-func parseTimestampFromName(name string) time.Time {
-	// name format: {prefix}_{host}_{timestamp}.meta.json or .tar.ext
-	// timestamp format: 2006-01-02T15-04-05
-	parts := strings.Split(name, "_")
-	if len(parts) >= 3 {
-		tsPart := parts[len(parts)-1]
-		tsPart = strings.TrimSuffix(tsPart, ".meta.json")
-		if idx := strings.Index(tsPart, ".tar."); idx != -1 {
-			tsPart = tsPart[:idx]
-		}
-		if t, err := time.ParseInLocation("2006-01-02T15-04-05", tsPart, time.Local); err == nil {
-			return t
-		}
-	}
-	return time.Time{}
-}
-
-func remoteJoin(remote, name string) string {
-	if !strings.HasSuffix(remote, "/") {
-		return remote + "/" + name
-	}
-	return remote + name
-}

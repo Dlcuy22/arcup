@@ -244,3 +244,10 @@ func formatSize(bytes int64) string {
 		return fmt.Sprintf("%d B", bytes)
 	}
 }
+
+func remoteJoin(remote, name string) string {
+	if !strings.HasSuffix(remote, "/") {
+		return remote + "/" + name
+	}
+	return remote + name
+}

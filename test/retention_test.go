@@ -26,7 +26,7 @@ func makeEntries(ages ...int) []retention.Entry {
 
 func TestRetention_KeepLast_ProtectsNewest(t *testing.T) {
 	entries := makeEntries(0, 1, 2, 30, 60)
-	policy := retention.Policy{KeepDays: 7, KeepLast: 3}
+	policy := retention.Policy{KeepWithin: 7 * 24 * time.Hour, KeepLast: 3}
 
 	results := retention.Evaluate(policy, entries)
 
@@ -42,9 +42,9 @@ func TestRetention_KeepLast_ProtectsNewest(t *testing.T) {
 	}
 }
 
-func TestRetention_KeepDays_RetainsRecent(t *testing.T) {
+func TestRetention_KeepWithin_RetainsRecent(t *testing.T) {
 	entries := makeEntries(1, 3, 5, 10, 20)
-	policy := retention.Policy{KeepDays: 7, KeepLast: 0}
+	policy := retention.Policy{KeepWithin: 7 * 24 * time.Hour, KeepLast: 0}
 
 	results := retention.Evaluate(policy, entries)
 
@@ -62,7 +62,7 @@ func TestRetention_KeepDays_RetainsRecent(t *testing.T) {
 
 func TestRetention_KeepLast_ProtectsExpired(t *testing.T) {
 	entries := makeEntries(30, 60, 90)
-	policy := retention.Policy{KeepDays: 7, KeepLast: 2}
+	policy := retention.Policy{KeepWithin: 7 * 24 * time.Hour, KeepLast: 2}
 
 	results := retention.Evaluate(policy, entries)
 
@@ -78,7 +78,7 @@ func TestRetention_KeepLast_ProtectsExpired(t *testing.T) {
 }
 
 func TestRetention_EmptyEntries(t *testing.T) {
-	results := retention.Evaluate(retention.Policy{KeepDays: 7, KeepLast: 3}, nil)
+	results := retention.Evaluate(retention.Policy{KeepWithin: 7 * 24 * time.Hour, KeepLast: 3}, nil)
 	if len(results) != 0 {
 		t.Fatalf("expected 0 results for nil entries, got %d", len(results))
 	}
@@ -86,7 +86,7 @@ func TestRetention_EmptyEntries(t *testing.T) {
 
 func TestRetention_AllRetained(t *testing.T) {
 	entries := makeEntries(0, 1, 2)
-	policy := retention.Policy{KeepDays: 30, KeepLast: 5}
+	policy := retention.Policy{KeepWithin: 30 * 24 * time.Hour, KeepLast: 5}
 
 	results := retention.Evaluate(policy, entries)
 
@@ -99,7 +99,7 @@ func TestRetention_AllRetained(t *testing.T) {
 
 func TestRetention_AllExpiredButProtected(t *testing.T) {
 	entries := makeEntries(100, 200, 300)
-	policy := retention.Policy{KeepDays: 1, KeepLast: 10}
+	policy := retention.Policy{KeepWithin: 24 * time.Hour, KeepLast: 10}
 
 	results := retention.Evaluate(policy, entries)
 

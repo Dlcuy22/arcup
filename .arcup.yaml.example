@@ -32,5 +32,5 @@ webhook:
 
 # Retention (runs after each backup if set)
 retention:
-  keep-days: 7
+  keep-within: "168h" # keep backups made within the last 7 days
   keep-last: 5

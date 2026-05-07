@@ -46,7 +46,7 @@ Press `Ctrl+C` to stop watch mode gracefully.
 **With retention policy:**
 
 ```bash
-arcup run -s /home/user/docs -r s3:bucket/backups --keep-days 7 --keep-last 5
+arcup run -s /home/user/docs -r s3:bucket/backups --keep-within 168h --keep-last 5
 ```
 
 **With a config file:**
@@ -84,7 +84,7 @@ Flags:
   -i, --interval string     schedule: cron expr or duration (e.g. "@daily", "6h")
 
   # Retention Policy
-  -d, --keep-days int       delete remote backups older than N days (0 = disabled)
+  -W, --keep-within string  delete remote backups older than duration (0 = disabled)
   -K, --keep-last int       always keep at least N most recent (0 = disabled)
 
   # Retry Mechanism
@@ -159,7 +159,7 @@ webhook:
 
 # Retention (runs after each backup if set)
 retention:
-  keep-days: 7
+  keep-within: "168h" # keep backups made within the last 7 days
   keep-last: 5
 ```
 
@@ -210,9 +210,9 @@ The `-i`/`--interval` flag accepts two formats:
 
 ## Retention Policy
 
-When you provide `--keep-days` and/or `--keep-last` to the `run` command, arcup will apply this retention policy after a successful backup upload:
+When you provide `--keep-within` and/or `--keep-last` to the `run` command, arcup will apply this retention policy after a successful backup upload:
 
-- **`keep-days`** delete anything older than N days
+- **`keep-within`** delete anything older than duration (e.g. `24h`, `168h`)
 - **`keep-last`** always keep at least N most recent, regardless of age
 
 Protected entries (keep-last) always win over expired entries. This prevents accidental deletion of all backups if no new backups ran for a while.

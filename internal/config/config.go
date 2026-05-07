@@ -25,6 +25,7 @@ package config
 import (
 	"errors"
 	"os"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -63,8 +64,8 @@ type WebhookConfig struct {
 }
 
 type RetentionConfig struct {
-	KeepDays int `mapstructure:"keep-days"`
-	KeepLast int `mapstructure:"keep-last"`
+	KeepWithin time.Duration `mapstructure:"keep-within"`
+	KeepLast   int           `mapstructure:"keep-last"`
 }
 
 /*
