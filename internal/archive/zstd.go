@@ -12,54 +12,35 @@ package archive
 import (
 	"fmt"
 	"os/exec"
-	"strings"
 )
 
 type ZstdArchiver struct{}
 
 func (z *ZstdArchiver) Archive(sources []string, dest string, extraArgs string) error {
-	tarArgs := append([]string{"-cf", "-"}, sources...)
-	tar := exec.Command("tar", tarArgs...)
-
-	zstdArgs := []string{}
+	compressCmd := "zstd"
 	if extraArgs != "" {
-		zstdArgs = append(zstdArgs, strings.Fields(extraArgs)...)
+		compressCmd = "zstd " + extraArgs
 	}
-	zstdArgs = append(zstdArgs, "-o", dest)
-	zstd := exec.Command("zstd", zstdArgs...)
 
-	pipe, err := tar.StdoutPipe()
+	tarArgs := []string{"-I", compressCmd, "-cf", dest}
+	tarArgs = append(tarArgs, sources...)
+
+	cmd := exec.Command("tar", tarArgs...)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("tar stdout pipe: %w", err)
+		return fmt.Errorf("tar+zstd: %w: %s", err, output)
 	}
-	zstd.Stdin = pipe
-
-	if err := tar.Start(); err != nil {
-		return fmt.Errorf("tar start: %w", err)
-	}
-	if err := zstd.Run(); err != nil {
-		return fmt.Errorf("zstd: %w", err)
-	}
-	return tar.Wait()
+	return nil
 }
 
 func (z *ZstdArchiver) Extract(archivePath string, dest string) error {
-	zstd := exec.Command("zstd", "-d", archivePath, "--stdout")
-	tar := exec.Command("tar", "-xf", "-", "-C", dest)
+	cmd := exec.Command("tar", "-I", "zstd -d", "-xf", archivePath, "-C", dest)
 
-	pipe, err := zstd.StdoutPipe()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("zstd stdout pipe: %w", err)
+		return fmt.Errorf("tar+zstd extract: %w: %s", err, output)
 	}
-	tar.Stdin = pipe
-
-	if err := zstd.Start(); err != nil {
-		return fmt.Errorf("zstd start: %w", err)
-	}
-	if err := tar.Run(); err != nil {
-		return fmt.Errorf("tar extract: %w", err)
-	}
-	return zstd.Wait()
+	return nil
 }
 
 func (z *ZstdArchiver) Extension() string {
