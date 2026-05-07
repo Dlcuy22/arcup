@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type RcloneUploader struct{}
@@ -78,6 +79,31 @@ func (r *RcloneUploader) Delete(remotePath string) error {
 	cmd := exec.Command("rclone", "deletefile", remotePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("rclone deletefile: %w: %s", err, output)
+	}
+	return nil
+}
+
+func (r *RcloneUploader) DeleteBatch(remotePath string, relativePaths []string) error {
+	if len(relativePaths) == 0 {
+		return nil
+	}
+
+	tmpFile, err := os.CreateTemp("", "arcup-delete-*.txt")
+	if err != nil {
+		return fmt.Errorf("create temp file for batch delete: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	content := strings.Join(relativePaths, "\n") + "\n"
+	if _, err := tmpFile.WriteString(content); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("write to temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	cmd := exec.Command("rclone", "delete", remotePath, "--files-from", tmpFile.Name())
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("rclone delete batch: %w: %s", err, output)
 	}
 	return nil
 }

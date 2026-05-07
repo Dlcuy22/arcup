@@ -36,6 +36,8 @@ type Policy struct {
 type Entry struct {
 	ArchivePath string
 	SidecarPath string
+	ArchiveName string
+	SidecarName string
 	Timestamp   time.Time
 	SizeBytes   int64
 }
@@ -112,6 +114,7 @@ func Execute(policy Policy, uploader upload.Uploader, remote string, dryRun bool
 
 	results := Evaluate(policy, entries)
 	deleted := 0
+	var toDelete []string
 
 	for _, r := range results {
 		if r.Action == Delete {
@@ -119,14 +122,18 @@ func Execute(policy Policy, uploader upload.Uploader, remote string, dryRun bool
 				log.Info().Str("archive", r.Entry.ArchivePath).Msg("dry run: would delete")
 				continue
 			}
-			if err := uploader.Delete(r.Entry.ArchivePath); err != nil {
-				log.Warn().Err(err).Str("file", r.Entry.ArchivePath).Msg("failed to delete archive")
-				continue
+			if r.Entry.ArchiveName != "" {
+				toDelete = append(toDelete, r.Entry.ArchiveName)
 			}
-			if err := uploader.Delete(r.Entry.SidecarPath); err != nil {
-				log.Warn().Err(err).Str("file", r.Entry.SidecarPath).Msg("failed to delete sidecar")
-			}
+			toDelete = append(toDelete, r.Entry.SidecarName)
 			deleted++
+		}
+	}
+
+	if len(toDelete) > 0 {
+		log.Info().Int("count", len(toDelete)).Msg("executing batch delete")
+		if err := uploader.DeleteBatch(remote, toDelete); err != nil {
+			log.Warn().Err(err).Msg("batch delete failed partially or entirely")
 		}
 	}
 
@@ -154,6 +161,8 @@ func buildEntries(uploader upload.Uploader, remote string) ([]Entry, error) {
 				entries = append(entries, Entry{
 					ArchivePath: remoteJoin(remote, candidate.Name),
 					SidecarPath: remoteJoin(remote, re.Name),
+					ArchiveName: candidate.Path,
+					SidecarName: re.Path,
 					Timestamp:   ts,
 					SizeBytes:   candidate.Size,
 				})
@@ -165,6 +174,8 @@ func buildEntries(uploader upload.Uploader, remote string) ([]Entry, error) {
 			entries = append(entries, Entry{
 				ArchivePath: "",
 				SidecarPath: remoteJoin(remote, re.Name),
+				ArchiveName: "",
+				SidecarName: re.Path,
 				Timestamp:   ts,
 				SizeBytes:   0,
 			})

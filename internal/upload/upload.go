@@ -29,6 +29,7 @@ type Uploader interface {
 	DownloadFiltered(remotePath, localDir, includePattern string) error
 	List(remotePath string) ([]RemoteEntry, error)
 	Delete(remotePath string) error
+	DeleteBatch(remotePath string, relativePaths []string) error
 }
 
 /*
