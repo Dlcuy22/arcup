@@ -25,7 +25,7 @@ import (
 
 var (
 	cfgFile      string
-	arcupVersion = "0.5.3"
+	arcupVersion = "0.5.4"
 )
 
 var rootCmd = &cobra.Command{

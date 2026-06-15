@@ -90,7 +90,7 @@ func (d *DiscordNotifier) buildPayload(event Event) map[string]interface{} {
 		fields = append(fields,
 			map[string]interface{}{"name": "Archive", "value": event.Archive, "inline": false},
 			map[string]interface{}{"name": "Size", "value": formatSize(event.Size), "inline": true},
-			map[string]interface{}{"name": "SHA256", "value": fmt.Sprintf("`%s`", event.Hash), "inline": false},
+			map[string]interface{}{"name": "SHA256", "value": fmt.Sprintf("`%.12s...`", event.Hash), "inline": false},
 			map[string]interface{}{"name": "Upload Time", "value": event.Duration.String(), "inline": true},
 		)
 	case EventFailed:
