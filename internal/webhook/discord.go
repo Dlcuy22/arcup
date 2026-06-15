@@ -106,7 +106,7 @@ func (d *DiscordNotifier) buildPayload(event Event) map[string]interface{} {
 		"color":     color,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 		"footer": map[string]interface{}{
-			"text": "Powered by [arcup](<https://github.com/dlcuy22/arcup>)",
+			"text": "Powered by [arcup](https://github.com/dlcuy22/arcup)",
 		},
 	}
 	if len(fields) > 0 {
