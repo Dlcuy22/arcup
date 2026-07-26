@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create release for (leave empty for dry-run build only)'
+        required: false
+        type: string
   push:
     tags:
       - 'v*'
@@ -34,6 +39,19 @@ jobs:
           [ "$GOOS" = "windows" ] && BIN_NAME="${BIN_NAME}.exe"
           go build -ldflags="-s -w" -o "dist/$BIN_NAME" .
       - name: Upload Release Asset
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+      - name: Upload Release Asset (manual tag)
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: dist/*
+      - name: Upload Artifacts (dry-run)
+        if: github.event_name == 'workflow_dispatch' && inputs.tag == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: arcup-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
