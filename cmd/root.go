@@ -30,7 +30,7 @@ import (
 var (
 	cfgFile      string
 	installFlag  bool
-	arcupVersion = "0.5.4"
+	arcupVersion = "0.6.0"
 )
 
 var rootCmd = &cobra.Command{
