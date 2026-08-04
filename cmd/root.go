@@ -6,8 +6,10 @@
 //   - rootCmd: Top-level cobra command with global flags
 //   - Execute(): Entry point called from main.go
 //   - initConfig(): Loads config file via viper and binds flags
+//   - installDefaultConfig(): Copies embedded default config to ~/.arcup.yaml
 //
 // Dependencies:
+//   - github.com/dlcuy22/arcup/assets: Embedded default config
 //   - github.com/spf13/cobra: CLI framework
 //   - github.com/spf13/viper: Config file + flag binding
 //   - github.com/rs/zerolog: Structured logging
@@ -16,7 +18,9 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
+	"github.com/dlcuy22/arcup/assets"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -25,6 +29,7 @@ import (
 
 var (
 	cfgFile      string
+	installFlag  bool
 	arcupVersion = "0.5.4"
 )
 
@@ -37,8 +42,20 @@ using tar with configurable compression (zstd, gzip, zip)
 and uploads them via rclone to any supported backend.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		log.Info().Str("version", arcupVersion).Msg("running arcup")
+		if installFlag {
+			if err := installDefaultConfig(); err != nil {
+				return err
+			}
+		}
+		return nil
+	},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if installFlag {
+			return nil
+		}
+		return cmd.Help()
 	},
 }
 
@@ -55,6 +72,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default: ~/.arcup.yaml)")
 	rootCmd.PersistentFlags().BoolP("dry-run", "n", false, "simulate without writing or uploading")
 	rootCmd.PersistentFlags().StringP("remote", "r", "", "rclone remote path (e.g. s3:bucket/backups)")
+	rootCmd.Flags().BoolVar(&installFlag, "install", false, "install default configuration to ~/.arcup.yaml")
 
 	viper.BindPFlag("dry-run", rootCmd.PersistentFlags().Lookup("dry-run"))
 	viper.BindPFlag("remote", rootCmd.PersistentFlags().Lookup("remote"))
@@ -84,3 +102,30 @@ func initConfig() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 }
+
+/*
+installDefaultConfig copies the embedded default config to ~/.arcup.yaml.
+
+    returns:
+          error: error if writing default config fails
+*/
+func installDefaultConfig() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("find home directory: %w", err)
+	}
+
+	targetPath := filepath.Join(home, ".arcup.yaml")
+	if _, err := os.Stat(targetPath); err == nil {
+		log.Info().Str("path", targetPath).Msg("configuration file already exists, skipping installation")
+		return nil
+	}
+
+	if err := os.WriteFile(targetPath, assets.DefaultConfig, 0644); err != nil {
+		return fmt.Errorf("write default config to %s: %w", targetPath, err)
+	}
+
+	log.Info().Str("path", targetPath).Msg("successfully installed default configuration")
+	return nil
+}
+

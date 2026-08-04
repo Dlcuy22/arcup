@@ -1,6 +1,5 @@
 # arcup Example Configuration
 # Copy to ~/.arcup.yaml and customize
-
 name: my-backup
 output-dir: /tmp/arcup
 keep: 3
@@ -18,7 +17,7 @@ remote: "s3:my-bucket/backups"
 
 # Watch mode (use with: arcup run -w)
 watch: false
-interval: "@daily"   # or "6h", "30m", "@weekly"
+interval: "@daily" # or "6h", "30m", "@weekly"
 
 # Retry settings (for archive creation and upload)
 retry:
@@ -27,7 +26,7 @@ retry:
 
 # Webhooks (optional, leave empty to disable)
 webhook:
-  discord: ""    # e.g. "https://discord.com/api/webhooks/..."
+  discord: "" # e.g. "https://discord.com/api/webhooks/..."
   custom-url: "" # generic POST webhook
 
 # Retention (runs after each backup if set)

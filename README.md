@@ -2,11 +2,21 @@
 
 (short for archive backup) is a portable CLI backup tool that archives files using `tar` with configurable compression and uploads them via `rclone` to any supported backend.
 
-## Install
+## Installation
+
+You can run the one-line installer script:
 
 ```bash
-go install github.com/dlcuy22/arcup@latest
+curl -sSL https://raw.githubusercontent.com/Dlcuy22/arcup/main/scripts/install.sh | bash
 ```
+
+Alternatively, you can download pre-built binaries from the GitHub release page [here](https://github.com/Dlcuy22/arcup/releases), or compile and install from source:
+
+```bash
+go install github.com/Dlcuy22/arcup@latest
+```
+
+This will install `arcup` into your `~/go/bin/`. Make sure it is in your `PATH`.
 
 ## Requirements
 
@@ -154,7 +164,7 @@ retry:
 
 # Webhooks (optional, leave empty to disable)
 webhook:
-  discord: ""    # e.g. "https://discord.com/api/webhooks/..."
+  discord: "" # e.g. "https://discord.com/api/webhooks/..."
   custom-url: "" # generic POST webhook
 
 # Retention (runs after each backup if set)
@@ -167,9 +177,10 @@ Flags always take priority over config file values.
 
 ### Webhooks
 
-Arcup can send lifecycle notifications (Job Started, Archive Created, Uploaded, Failed) to external services. Configure these in your `~/.arcup.yaml`. 
-* **Discord**: Sends rich, color-coded embeds with backup stats (size, hash, duration).
-* **Custom URL**: Sends a generic JSON POST payload to your API or automation service.
+Arcup can send lifecycle notifications (Job Started, Archive Created, Uploaded, Failed) to external services. Configure these in your `~/.arcup.yaml`.
+
+- **Discord**: Sends rich, color-coded embeds with backup stats (size, hash, duration).
+- **Custom URL**: Sends a generic JSON POST payload to your API or automation service.
 
 ## Archive Naming
 
